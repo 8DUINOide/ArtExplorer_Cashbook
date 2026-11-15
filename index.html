@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#152319">
+  <meta name="description" content="Offline-first daily cashbook for ArtExplorer Computer Services.">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/jpeg" href="artex-icon.jpg">
+  <link rel="stylesheet" href="styles.css">
+  <title>ArtExplorer Cashbook</title>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="ArtExplorer Cashbook home">
+        <img class="brand-logo" src="artex-icon.jpg" alt="ArtExplorer logo">
+        <span><strong>Cashbook</strong><small>ArtExplorer Computer Services</small></span>
+      </a>
+      <div class="topbar-right">
+        <span id="sync-status" class="sync-pill"><i></i><span>Local only</span></span>
+      </div>
+    </header>
+
+    <nav class="main-nav" aria-label="Main navigation">
+      <button class="nav-button active" data-page="today-page" type="button"><span>◷</span>Today</button>
+      <button class="nav-button" data-page="monthly-page" type="button"><span>▥</span>Monthly</button>
+      <button class="nav-button" data-page="activity-page" type="button"><span>▤</span>Activity</button>
+      <button class="nav-button" data-page="settings-page" type="button"><span>⚙</span>Setup</button>
+    </nav>
+
+    <main>
+      <section id="today-page" class="page">
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">DAILY CASH DESK</p>
+            <h1>Today</h1>
+            <p id="today-date" class="muted"></p>
+          </div>
+          <div class="quick-actions">
+            <button class="button button-soft" data-record="income" type="button">＋ Record income</button>
+            <button class="button button-soft" data-record="expense" type="button">− Record expense</button>
+          </div>
+        </div>
+
+        <div class="metrics-grid">
+          <article class="metric-card metric-primary">
+            <span class="metric-label">Lender payments</span>
+            <div class="lender-metric-row">
+              <strong id="metric-lenders-amount" class="lender-paid-amount">₱0.00</strong>
+              <strong id="metric-lenders" class="lender-count">0 <small>/ 0 paid</small></strong>
+            </div>
+            <span id="metric-lenders-sub" class="metric-foot">Set up your daily list</span>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">Income today</span>
+            <strong id="metric-income">0</strong>
+            <span class="metric-foot">Recorded sales and services</span>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">Expenses today</span>
+            <strong id="metric-expenses">0</strong>
+            <span class="metric-foot">Cash expenses recorded</span>
+          </article>
+          <article class="metric-card metric-warm">
+            <span class="metric-label">Owed to staff</span>
+            <strong id="metric-staff-owed">0</strong>
+            <span class="metric-foot">Personal money used for the shop</span>
+          </article>
+        </div>
+
+        <div class="content-grid">
+          <section class="panel payments-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">DAILY CHECKLIST</p>
+                <h2>Payments to lenders</h2>
+              </div>
+              <button class="text-button" data-page-link="settings-page" type="button">Manage list <span>→</span></button>
+            </div>
+            <div id="lender-list" class="lender-list"></div>
+            <div id="empty-lenders" class="empty-state">
+              <div class="empty-icon">＋</div>
+              <h3>Add your daily lenders</h3>
+              <p>Add each lender and their usual payment once. They’ll appear here each day.</p>
+              <button class="button button-primary" data-page-link="settings-page" type="button">Set up lenders</button>
+            </div>
+            <div id="payments-summary" class="payments-summary" hidden></div>
+          </section>
+
+          <aside class="panel today-side">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">CASH MOVEMENT</p>
+                <h2>Today at a glance</h2>
+              </div>
+            </div>
+            <div class="cash-line cash-income-line"><span>Income received in cash</span><strong id="cash-income">0</strong></div>
+            <div class="cash-line cash-expense-line"><span>Shop-paid expenses</span><strong id="cash-expenses">0</strong></div>
+            <div class="cash-line cash-loan-line"><span>Lenders paid from shop cash</span><strong id="cash-loans">0</strong></div>
+            <div class="cash-line cash-reimbursement-line"><span>Staff reimbursements paid</span><strong id="cash-reimbursements">0</strong></div>
+            <div id="cash-net-row" class="cash-line cash-total"><span>Net change in shop cash</span><strong id="cash-net">0</strong></div>
+            <div class="formula-note">
+              <strong>How it’s calculated</strong>
+              <span>Cash income − shop-paid expenses − lender payments from shop cash − staff reimbursements</span>
+              <span class="formula-key">Colored borders identify each part of the calculation.</span>
+            </div>
+            <p class="helper-note">A negative change means more shop cash was paid out than received today. It does not mean the drawer itself has a negative balance. Expected closing cash = opening cash + net change.</p>
+            <button id="record-reimbursement" class="button button-outline full-width" type="button">Reimburse a staff member</button>
+          </aside>
+        </div>
+
+        <section class="panel closing-panel">
+          <div class="panel-heading">
+            <div><p class="eyebrow">END OF DAY</p><h2>Count the drawer</h2></div>
+            <span id="closing-state" class="closing-state">Not counted</span>
+          </div>
+          <p class="section-copy">Enter the opening cash and physical cash count. The app compares the count with today’s recorded cash movement.</p>
+          <form id="closing-form" class="closing-form">
+            <label class="field">Opening cash<input id="opening-cash" type="number" min="0" step="0.01" inputmode="decimal" value="0"></label>
+            <label class="field">Cash counted at closing<input id="counted-cash" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00"></label>
+            <div class="closing-preview">
+              <div><span>Expected cash</span><strong id="expected-cash">0.00</strong></div>
+              <div><span>Difference</span><strong id="cash-difference">Enter the closing count</strong></div>
+            </div>
+            <button class="button button-primary" type="submit">Save closing count</button>
+          </form>
+          <p id="closing-note" class="helper-note"></p>
+        </section>
+
+        <section class="panel recent-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">LATEST RECORDS</p>
+              <h2>Today’s activity</h2>
+            </div>
+            <button class="text-button" data-page-link="activity-page" type="button">View all <span>→</span></button>
+          </div>
+          <div id="today-activity" class="activity-list"></div>
+        </section>
+      </section>
+
+      <section id="monthly-page" class="page" hidden>
+        <div class="page-heading">
+          <div><p class="eyebrow">MONTHLY OVERVIEW</p><h1>Monthly data</h1><p class="muted">Income, expenses, lender payments, and staff advances by week.</p></div>
+          <label class="field month-picker">Month<input id="month-selector" type="month"></label>
+        </div>
+        <div class="monthly-metrics">
+          <article class="metric-card"><span class="metric-label">Income</span><strong id="month-income">0.00</strong><span class="metric-foot">Sales and services recorded</span></article>
+          <article class="metric-card"><span class="metric-label">Expenses</span><strong id="month-expenses">0.00</strong><span class="metric-foot">Business expenses recorded</span></article>
+          <article class="metric-card"><span class="metric-label">Lender payments</span><strong id="month-loans">0.00</strong><span class="metric-foot">Amount paid this month</span></article>
+          <article class="metric-card metric-warm"><span class="metric-label">Staff advances</span><strong id="month-advances">0.00</strong><span class="metric-foot">Paid personally for the shop</span></article>
+          <article class="metric-card metric-primary"><span class="metric-label">Net shop cash movement</span><strong id="month-net">0.00</strong><span class="metric-foot">Cash in minus cash paid out</span></article>
+        </div>
+        <section class="panel monthly-chart-panel">
+          <div class="panel-heading">
+            <div><p class="eyebrow">WEEKLY COMPARISON</p><h2 id="monthly-chart-title">This month</h2></div>
+            <div class="chart-legend"><span><i class="legend-income"></i>Income</span><span><i class="legend-expense"></i>Expenses</span><span><i class="legend-loans"></i>Lender payments</span></div>
+          </div>
+          <div id="monthly-chart-wrap" class="chart-wrap"></div>
+          <div id="monthly-table-wrap" class="monthly-table-wrap"></div>
+          <p id="monthly-empty" class="helper-note" hidden>No activity recorded for this month yet.</p>
+        </section>
+      </section>
+
+      <section id="activity-page" class="page" hidden>
+        <div class="page-heading">
+          <div><p class="eyebrow">RECORD BOOK</p><h1>Activity</h1><p class="muted">Income, expenses, lender payments, and staff reimbursements.</p></div>
+          <button class="button button-soft" id="download-backup" type="button">↓ Download backup</button>
+        </div>
+        <section class="panel">
+          <div class="activity-filters">
+            <label class="field-inline">Show
+              <select id="activity-filter">
+                <option value="all">Everything</option>
+                <option value="income">Income</option>
+                <option value="expense">Expenses</option>
+                <option value="lender_payment">Lender payments</option>
+                <option value="reimbursement">Staff reimbursements</option>
+                <option value="cash_close">Closing cash counts</option>
+              </select>
+            </label>
+          </div>
+          <div id="all-activity" class="activity-list"></div>
+          <div id="empty-activity" class="empty-state compact" hidden><h3>No records yet</h3><p>Records you add will appear here.</p></div>
+        </section>
+      </section>
+
+      <section id="settings-page" class="page" hidden>
+        <div class="page-heading">
+          <div><p class="eyebrow">ONE-TIME SETUP</p><h1>Setup</h1><p class="muted">Keep the daily routine quick by setting these up once.</p></div>
+        </div>
+        <div class="settings-grid">
+          <section class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">DAILY CHECKLIST</p><h2>Your lenders</h2></div></div>
+            <p class="section-copy">Enter each lender’s name and usual daily payment. You can change an amount whenever it changes.</p>
+            <form id="lender-form" class="form-row">
+              <label class="field grow">Lender name<input id="lender-name" name="name" required maxlength="60" placeholder="e.g. Lender A"></label>
+              <label class="field amount-field">Usual daily amount<input id="lender-amount" name="amount" required inputmode="decimal" type="number" min="0.01" step="0.01" placeholder="0.00"></label>
+              <button class="button button-primary add-lender-button" type="submit">Add lender</button>
+            </form>
+            <div id="setup-lender-list" class="setup-lender-list"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">CLOUD BACKUP</p><h2>Firebase sync</h2></div></div>
+            <p class="section-copy">The app saves on this device first. Add your Firebase web app details to sync records when online. Your Firebase account password is not saved.</p>
+            <form id="firebase-config-form" class="form-stack">
+              <label class="field">API key<input id="firebase-api-key" autocomplete="off" placeholder="Firebase project API key"></label>
+              <div class="two-fields">
+                <label class="field">Auth domain<input id="firebase-auth-domain" autocomplete="off" placeholder="your-project.firebaseapp.com"></label>
+                <label class="field">Project ID<input id="firebase-project-id" autocomplete="off" placeholder="your-project-id"></label>
+              </div>
+              <label class="field">App ID<input id="firebase-app-id" autocomplete="off" placeholder="1:123456:web:..."></label>
+              <button class="button button-soft" type="submit">Save Firebase settings</button>
+            </form>
+            <form id="firebase-login-form" class="form-stack login-form">
+              <label class="field">Owner email<input id="firebase-email" type="email" autocomplete="username" placeholder="name@example.com"></label>
+              <label class="field">Password<input id="firebase-password" type="password" autocomplete="current-password" placeholder="Firebase account password"></label>
+              <div class="login-actions">
+                <button class="button button-primary" id="firebase-signin" type="button">Sign in & sync</button>
+                <button class="button button-outline" id="firebase-signup" type="button">Create account</button>
+              </div>
+              <button class="text-button signout-button" id="firebase-signout" type="button" hidden>Sign out</button>
+            </form>
+            <p id="firebase-message" class="inline-message" role="status">Not connected. Local records are safe on this device.</p>
+            <details class="rules-help">
+              <summary>Firebase setup steps</summary>
+              <ol>
+                <li>Create a Firebase project and add a Web app.</li>
+                <li>Enable Email/Password in Authentication and create a Firestore database.</li>
+                <li>Paste the Web app config values above.</li>
+                <li>Publish the included firestore.rules rules before syncing.</li>
+              </ol>
+            </details>
+          </section>
+          <section class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">LOCAL BACKUP</p><h2>Protect your records</h2></div></div>
+            <p class="section-copy">Download a copy of the records on this device. Keep the backup somewhere separate from this computer.</p>
+            <div class="backup-actions">
+              <button class="button button-outline" id="download-backup-settings" type="button">Download data backup</button>
+              <button class="button button-soft" id="restore-backup" type="button">Restore a backup</button>
+              <input id="restore-file" type="file" accept="application/json,.json" hidden>
+            </div>
+            <p class="helper-note">Restore merges records with this device. Newer existing records are kept. Amounts are displayed in Philippine pesos (₱).</p>
+          </section>
+        </div>
+      </section>
+    </main>
+    <footer><span>ArtExplorer Computer Services</span><span>Offline-first · Your device saves first</span></footer>
+  </div>
+
+  <dialog id="record-dialog" class="record-dialog">
+    <form id="record-form" method="dialog">
+      <div class="dialog-heading"><div><p class="eyebrow" id="record-eyebrow">QUICK ENTRY</p><h2 id="record-title">Record income</h2></div><button class="icon-button close-dialog" type="button" aria-label="Close">×</button></div>
+      <input type="hidden" id="record-type">
+      <label class="field">Amount<input id="record-amount" type="number" inputmode="decimal" min="0.01" step="0.01" required placeholder="0.00"></label>
+      <label class="field" id="record-category-wrap">Category
+        <select id="record-category"></select>
+      </label>
+      <label class="field">Note <span class="optional">(optional)</span><input id="record-note" maxlength="120" placeholder="Short description"></label>
+      <label class="field" id="record-source-wrap">Paid using
+        <select id="record-source"><option value="shop_cash">Shop cash</option><option value="personal">Staff personal money</option><option value="other">Other payment method</option></select>
+      </label>
+      <label class="field" id="record-employee-wrap" hidden>Staff member<input id="record-employee" list="employee-options" maxlength="60" placeholder="Name of person who paid"></label>
+      <p id="record-form-note" class="helper-note"></p>
+      <div class="dialog-actions"><button class="button button-outline cancel-dialog" type="button">Cancel</button><button class="button button-primary" id="record-submit" type="submit">Save record</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="payment-dialog" class="record-dialog">
+    <form id="payment-form" method="dialog">
+      <div class="dialog-heading"><div><p class="eyebrow">LENDER PAYMENT</p><h2 id="payment-title">Record payment</h2></div><button class="icon-button close-payment-dialog" type="button" aria-label="Close">×</button></div>
+      <input type="hidden" id="payment-lender-id">
+      <input type="hidden" id="payment-mode" value="edit">
+      <label class="field"><span id="payment-shop-label">Amount paid from shop cash</span><input id="payment-shop-amount" type="number" inputmode="decimal" min="0" step="0.01" value="0"></label>
+      <label class="field"><span id="payment-personal-label">Amount paid with staff personal money</span><input id="payment-personal-amount" type="number" inputmode="decimal" min="0" step="0.01" value="0"></label>
+      <label class="field" id="payment-employee-wrap" hidden>Staff member<input id="payment-employee" list="employee-options" maxlength="60" placeholder="Name of person who paid"></label>
+      <p id="payment-helper" class="helper-note"></p>
+      <div class="dialog-actions"><button class="button button-outline cancel-payment-dialog" type="button">Cancel</button><button class="button button-primary" type="submit">Save payment</button></div>
+    </form>
+  </dialog>
+
+  <datalist id="employee-options"></datalist>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>

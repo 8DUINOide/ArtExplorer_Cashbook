@@ -1,0 +1,18 @@
+{
+  "name": "ArtExplorer Computer Services Cashbook",
+  "short_name": "ArtExplorer",
+  "description": "Offline-first daily cashbook for ArtExplorer Computer Services.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f7f9f6",
+  "theme_color": "#152319",
+  "icons": [
+    {
+      "src": "./artex-icon.jpg",
+      "sizes": "920x920",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ]
+}
