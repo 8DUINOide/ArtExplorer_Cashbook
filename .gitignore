@@ -1,0 +1,7 @@
+# Local Supabase browser config: use a publishable key only.
+/supabase-config.local.js
+
+# Local environment files. This static app does not read .env at runtime.
+/.env
+/.env.*
+!/.env.example

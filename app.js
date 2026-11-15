@@ -2,17 +2,15 @@
 
 const DB_NAME = "artexplorer-cashbook";
 const DB_VERSION = 1;
-const FIREBASE_VERSION = "13.3.0";
-const CONFIG_KEY = "artexplorer-firebase-config-v1";
+const SUPABASE_JS_URL = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
 const CATEGORIES = {
   income: ["Printing", "Computer services", "Repair", "Other"],
   expense: ["Supplies", "Maintenance", "Utilities", "Other"]
 };
 let dbPromise;
-let firebaseModules = null;
-let firebaseAuth = null;
-let firebaseDb = null;
-let firebaseAppConfigString = "";
+let supabaseLoadPromise = null;
+let supabaseClient = null;
+let supabaseConfigString = "";
 let currentUser = null;
 let syncInProgress = false;
 let syncRequested = false;
@@ -120,77 +118,56 @@ function setSyncBadge(state, label) {
   pill.lastElementChild.textContent = label;
 }
 
-function setFirebaseMessage(message, state) {
-  const element = document.getElementById("firebase-message");
+function setSupabaseMessage(message, state) {
+  const element = document.getElementById("supabase-message");
   element.textContent = message;
   element.className = "inline-message" + (state ? " " + state : "");
 }
 
-function readFirebaseConfig() {
-  try { return JSON.parse(localStorage.getItem(CONFIG_KEY) || "null"); }
-  catch (_) { return null; }
-}
-
-function configFromForm() {
-  return {
-    apiKey: document.getElementById("firebase-api-key").value.trim(),
-    authDomain: document.getElementById("firebase-auth-domain").value.trim(),
-    projectId: document.getElementById("firebase-project-id").value.trim(),
-    appId: document.getElementById("firebase-app-id").value.trim()
-  };
+function readSupabaseConfig() {
+  return window.ARTEPLORER_SUPABASE_CONFIG || null;
 }
 
 function hasConfig(config) {
-  return Boolean(config && config.apiKey && config.authDomain && config.projectId && config.appId);
+  return Boolean(config && config.url && config.publishableKey);
 }
 
-function loadSavedFirebaseConfig() {
-  const config = readFirebaseConfig();
-  if (!config) return;
-  document.getElementById("firebase-api-key").value = config.apiKey || "";
-  document.getElementById("firebase-auth-domain").value = config.authDomain || "";
-  document.getElementById("firebase-project-id").value = config.projectId || "";
-  document.getElementById("firebase-app-id").value = config.appId || "";
-}
-
-async function loadFirebaseSdk() {
-  if (firebaseModules) return firebaseModules;
-  if (!navigator.onLine) throw new Error("Firebase needs an internet connection. Your local records still work.");
-  const base = "https://www.gstatic.com/firebasejs/" + FIREBASE_VERSION + "/";
-  const loaded = await Promise.all([
-    import(base + "firebase-app.js"),
-    import(base + "firebase-auth.js"),
-    import(base + "firebase-firestore.js")
-  ]);
-  firebaseModules = {
-    app: loaded[0],
-    auth: loaded[1],
-    firestore: loaded[2]
-  };
-  return firebaseModules;
-}
-
-async function getFirebaseServices() {
-  const config = readFirebaseConfig();
-  if (!hasConfig(config)) throw new Error("Save all four Firebase Web app values in Setup first.");
-  const sdk = await loadFirebaseSdk();
-  let app = sdk.app.getApps().find(function (item) { return item.name === "artexplorer-cashbook"; });
-  const configString = JSON.stringify(config);
-  if (app && firebaseAppConfigString && firebaseAppConfigString !== configString) {
-    await sdk.app.deleteApp(app);
-    app = null;
-    firebaseAuth = null;
-    firebaseDb = null;
+function loadSupabaseSdk() {
+  if (window.supabase && window.supabase.createClient) return Promise.resolve(window.supabase);
+  if (!navigator.onLine) return Promise.reject(new Error("An internet connection is needed to connect. Local records are still available."));
+  if (!supabaseLoadPromise) {
+    supabaseLoadPromise = new Promise(function (resolve, reject) {
+      const script = document.createElement("script");
+      script.src = SUPABASE_JS_URL;
+      script.async = true;
+      script.onload = function () {
+        if (window.supabase && window.supabase.createClient) resolve(window.supabase);
+        else reject(new Error("Could not load the cloud sync library."));
+      };
+      script.onerror = function () { reject(new Error("Could not load the cloud sync library. Check the internet connection.")); };
+      document.head.appendChild(script);
+    }).catch(function (error) {
+      supabaseLoadPromise = null;
+      throw error;
+    });
   }
-  if (!app) app = sdk.app.initializeApp(config, "artexplorer-cashbook");
-  firebaseAppConfigString = configString;
-  firebaseAuth = sdk.auth.getAuth(app);
-  firebaseDb = sdk.firestore.getFirestore(app);
-  return sdk;
+  return supabaseLoadPromise;
 }
 
-function cloudCollection(sdk, userId, name) {
-  return sdk.firestore.collection(firebaseDb, "users", userId, name);
+async function getSupabaseClient() {
+  const config = readSupabaseConfig();
+  if (!hasConfig(config)) throw new Error("Cloud sync is not configured yet. Ask the app administrator.");
+  const configString = JSON.stringify(config);
+  if (supabaseClient && supabaseConfigString === configString) return supabaseClient;
+  const sdk = await loadSupabaseSdk();
+  if (supabaseClient) {
+    await supabaseClient.auth.signOut({ scope: "local" });
+  }
+  supabaseClient = sdk.createClient(config.url, config.publishableKey, {
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
+  });
+  supabaseConfigString = configString;
+  return supabaseClient;
 }
 
 function withoutLocalFields(record) {
@@ -214,27 +191,27 @@ async function syncNow() {
     setSyncBadge("", "Offline · saved here");
     return;
   }
-  const config = readFirebaseConfig();
-  if (!hasConfig(config) || !currentUser || !firebaseDb || !firebaseModules) {
+  const config = readSupabaseConfig();
+  if (!hasConfig(config) || !currentUser) {
     setSyncBadge("", "Local only");
     return;
   }
   syncInProgress = true;
   setSyncBadge("syncing", "Syncing");
-  setFirebaseMessage("Syncing this device with Firebase…", "");
+  setSupabaseMessage("Syncing this device…", "");
   try {
-    const sdk = firebaseModules;
-    const uid = currentUser.uid;
-    await syncCollection(sdk, uid, "entries");
-    await syncLenders(sdk, uid);
+    const client = await getSupabaseClient();
+    const uid = currentUser.id;
+    await syncTable(client, uid, "entries", "cashbook_entries");
+    await syncTable(client, uid, "lenders", "cashbook_lenders");
     setSyncBadge("online", "Synced");
-    setFirebaseMessage("Connected as " + currentUser.email + ". This device is synced.", "success");
-    document.getElementById("firebase-signout").hidden = false;
+    setSupabaseMessage("Connected as " + currentUser.email + ". This device is synced.", "success");
+    document.getElementById("supabase-signout").hidden = false;
     await renderApp();
   } catch (error) {
-    console.error("Firebase sync failed", error);
+    console.error("Supabase sync failed", error);
     setSyncBadge("error", "Sync needs attention");
-    setFirebaseMessage(firebaseErrorText(error), "error");
+    setSupabaseMessage(supabaseErrorText(error), "error");
   } finally {
     syncInProgress = false;
     if (syncRequested) {
@@ -244,14 +221,25 @@ async function syncNow() {
   }
 }
 
-async function syncCollection(sdk, uid, storeName) {
-  const firestore = sdk.firestore;
-  const reference = cloudCollection(sdk, uid, storeName);
-  const snapshot = await firestore.getDocs(reference);
+async function syncTable(client, uid, storeName, tableName) {
+  const remoteRows = [];
+  const pageSize = 500;
+  for (let offset = 0; ; offset += pageSize) {
+    const result = await client.from(tableName)
+      .select("id,payload,updated_at_ms")
+      .eq("owner_id", uid)
+      .order("id")
+      .range(offset, offset + pageSize - 1);
+    if (result.error) throw result.error;
+    remoteRows.push.apply(remoteRows, result.data || []);
+    if (!result.data || result.data.length < pageSize) break;
+  }
   const remote = new Map();
-  snapshot.forEach(function (docSnapshot) {
-    const data = docSnapshot.data();
-    data.id = data.id || docSnapshot.id;
+  remoteRows.forEach(function (row) {
+    const data = Object.assign({}, row.payload || {}, {
+      id: row.id,
+      updatedAtMs: Number(row.updated_at_ms || (row.payload && row.payload.updatedAtMs) || 0)
+    });
     remote.set(data.id, data);
   });
   const local = await readAll(storeName);
@@ -269,124 +257,88 @@ async function syncCollection(sdk, uid, storeName) {
     }
   }
 
+  const toUpload = [];
   for (const [id, localRecord] of localById) {
     const cloudRecord = remote.get(id);
     if (!cloudRecord || Number(localRecord.updatedAtMs || 0) > Number(cloudRecord.updatedAtMs || 0)) {
-      await firestore.setDoc(firestore.doc(reference, id), withoutLocalFields(localRecord));
-      const synced = await markSyncState(storeName, localRecord, "synced");
-      localById.set(id, synced);
+      toUpload.push({
+        owner_id: uid,
+        id: id,
+        payload: withoutLocalFields(localRecord),
+        updated_at_ms: Number(localRecord.updatedAtMs || Date.now())
+      });
     }
+  }
+  for (let offset = 0; offset < toUpload.length; offset += pageSize) {
+    const uploaded = await client.from(tableName).upsert(toUpload.slice(offset, offset + pageSize), { onConflict: "owner_id,id" });
+    if (uploaded.error) throw uploaded.error;
+  }
+  for (const row of toUpload) {
+    const localRecord = localById.get(row.id);
+    if (localRecord) await markSyncState(storeName, localRecord, "synced");
   }
 }
 
-async function syncLenders(sdk, uid) {
-  const firestore = sdk.firestore;
-  const reference = cloudCollection(sdk, uid, "lenders");
-  const snapshot = await firestore.getDocs(reference);
-  const remote = new Map();
-  snapshot.forEach(function (docSnapshot) {
-    const data = docSnapshot.data();
-    data.id = data.id || docSnapshot.id;
-    remote.set(data.id, data);
-  });
-  const local = await readAll("lenders");
-  const localById = new Map(local.map(function (record) { return [record.id, record]; }));
-  for (const [id, cloudRecord] of remote) {
-    const localRecord = localById.get(id);
-    if (!localRecord || Number(cloudRecord.updatedAtMs || 0) > Number(localRecord.updatedAtMs || 0)) {
-      const next = Object.assign({}, cloudRecord, { syncState: "synced" });
-      await writeOne("lenders", next);
-      localById.set(id, next);
-    } else if (Number(cloudRecord.updatedAtMs || 0) === Number(localRecord.updatedAtMs || 0)) {
-      const next = Object.assign({}, localRecord, { syncState: "synced" });
-      await writeOne("lenders", next);
-      localById.set(id, next);
-    }
-  }
-  for (const [id, localRecord] of localById) {
-    const cloudRecord = remote.get(id);
-    if (!cloudRecord || Number(localRecord.updatedAtMs || 0) > Number(cloudRecord.updatedAtMs || 0)) {
-      await firestore.setDoc(firestore.doc(reference, id), withoutLocalFields(localRecord));
-      await markSyncState("lenders", localRecord, "synced");
-    }
-  }
+function supabaseErrorText(error) {
+  const message = String(error && error.message || "");
+  if (/invalid login credentials|invalid credentials/i.test(message)) return "Email or password was not accepted.";
+  if (/row-level security|permission denied|not allowed/i.test(message)) return "Cloud access is not set up correctly. Ask the app administrator to check the database policies.";
+  if (/relation .* does not exist|could not find the table/i.test(message)) return "Cloud database setup is incomplete. Ask the app administrator to apply the database setup.";
+  if (!navigator.onLine || /failed to fetch|network/i.test(message)) return "No internet connection. Records remain saved on this device.";
+  return message || "Could not connect to the cloud database. Local records remain safe on this device.";
 }
 
-function firebaseErrorText(error) {
-  const code = error && error.code ? error.code : "";
-  if (code === "auth/invalid-credential" || code === "auth/wrong-password" || code === "auth/user-not-found") return "Email or password was not accepted.";
-  if (code === "auth/email-already-in-use") return "That email already has an account. Use Sign in instead.";
-  if (code === "auth/weak-password") return "Choose a stronger password (at least 6 characters).";
-  if (code === "auth/operation-not-allowed") return "Enable Email/Password sign-in in Firebase Authentication.";
-  if (code === "permission-denied") return "Firestore denied access. Publish the included security rules and try again.";
-  if (code === "unavailable" || !navigator.onLine) return "No internet connection. Records remain saved on this device.";
-  return (error && error.message) ? error.message : "Could not connect to Firebase. Local records remain safe on this device.";
-}
-
-function updateFirebaseLogin(user) {
+function updateSupabaseLogin(user) {
   currentUser = user || null;
   if (user) {
-    document.getElementById("firebase-signout").hidden = false;
-    setFirebaseMessage("Connected as " + (user.email || "owner") + ".", "success");
+    document.getElementById("supabase-signout").hidden = false;
+    setSupabaseMessage("Connected as " + (user.email || "owner") + ".", "success");
     setSyncBadge("online", "Connected");
   } else {
-    document.getElementById("firebase-signout").hidden = true;
+    document.getElementById("supabase-signout").hidden = true;
     setSyncBadge("", "Local only");
   }
 }
 
-async function connectFirebase(createAccount) {
-  const config = configFromForm();
-  if (!hasConfig(config)) {
-    setFirebaseMessage("Enter and save your Firebase Web app values first.", "error");
+async function connectSupabase() {
+  if (!hasConfig(readSupabaseConfig())) {
+    setSupabaseMessage("Cloud sync is not configured yet. Ask the app administrator.", "error");
     return;
   }
-  const saved = readFirebaseConfig();
-  if (JSON.stringify(config) !== JSON.stringify(saved)) {
-    setFirebaseMessage("Save the Firebase settings first, then sign in.", "error");
-    return;
-  }
-  const email = document.getElementById("firebase-email").value.trim();
-  const password = document.getElementById("firebase-password").value;
+  const email = document.getElementById("supabase-email").value.trim();
+  const password = document.getElementById("supabase-password").value;
   if (!email || !password) {
-    setFirebaseMessage("Enter the owner email and password.", "error");
+    setSupabaseMessage("Enter the owner email and password.", "error");
     return;
   }
-  setSyncBadge("syncing", createAccount ? "Creating account" : "Connecting");
-  setFirebaseMessage("Connecting to Firebase…", "");
+  setSyncBadge("syncing", "Connecting");
+  setSupabaseMessage("Connecting…", "");
   try {
-    const sdk = await getFirebaseServices();
-    await sdk.auth.setPersistence(firebaseAuth, sdk.auth.browserLocalPersistence);
-    const credential = createAccount
-      ? await sdk.auth.createUserWithEmailAndPassword(firebaseAuth, email, password)
-      : await sdk.auth.signInWithEmailAndPassword(firebaseAuth, email, password);
-    updateFirebaseLogin(credential.user);
-    document.getElementById("firebase-password").value = "";
+    const client = await getSupabaseClient();
+    const result = await client.auth.signInWithPassword({ email: email, password: password });
+    if (result.error) throw result.error;
+    updateSupabaseLogin(result.data.user);
+    document.getElementById("supabase-password").value = "";
     await syncNow();
   } catch (error) {
-    console.error("Firebase connection failed", error);
+    console.error("Supabase connection failed", error);
     setSyncBadge("error", "Not connected");
-    setFirebaseMessage(firebaseErrorText(error), "error");
+    setSupabaseMessage(supabaseErrorText(error), "error");
   }
 }
 
-async function restoreFirebaseSession() {
-  const config = readFirebaseConfig();
+async function restoreSupabaseSession() {
+  const config = readSupabaseConfig();
   if (!hasConfig(config) || !navigator.onLine) return;
   try {
-    const sdk = await getFirebaseServices();
-    const auth = firebaseAuth;
-    const user = await new Promise(function (resolve) {
-      let unsubscribe = null;
-      unsubscribe = sdk.auth.onAuthStateChanged(auth, function (value) {
-        if (unsubscribe) unsubscribe();
-        resolve(value || null);
-      }, function () { resolve(null); });
-    });
-    updateFirebaseLogin(user);
+    const client = await getSupabaseClient();
+    const result = await client.auth.getSession();
+    if (result.error) throw result.error;
+    const user = result.data.session && result.data.session.user;
+    updateSupabaseLogin(user);
     if (user) await syncNow();
   } catch (error) {
-    console.info("Firebase session is not available yet", error);
+    console.info("Supabase session is not available yet", error);
     setSyncBadge("", "Local only");
   }
 }
@@ -559,8 +511,6 @@ async function renderToday() {
   document.getElementById("cash-loans").textContent = money(lenderCash);
   document.getElementById("cash-reimbursements").textContent = money(reimbursements);
   document.getElementById("cash-net").textContent = money(netCashChange);
-  document.getElementById("cash-net-row").classList.toggle("negative", netCashChange < 0);
-  document.getElementById("cash-net-row").classList.toggle("positive", netCashChange >= 0);
   renderClosingPanel(date, allEntries);
   const recent = entries.slice().sort(function (a, b) { return Number(b.updatedAtMs || 0) - Number(a.updatedAtMs || 0); }).slice(0, 5);
   document.getElementById("today-activity").innerHTML = recent.length ? recent.map(activityHtml).join("") : '<div class="empty-state compact"><p>No entries today yet. Start with income, an expense, or a lender payment.</p></div>';
@@ -913,7 +863,6 @@ async function renderEmployeeSuggestions() {
 function openPage(pageId) {
   document.querySelectorAll(".page").forEach(function (page) { page.hidden = page.id !== pageId; });
   document.querySelectorAll(".nav-button").forEach(function (button) { button.classList.toggle("active", button.dataset.page === pageId); });
-  if (pageId === "settings-page") loadSavedFirebaseConfig();
   if (pageId === "monthly-page") renderMonthly();
 }
 
@@ -1222,49 +1171,34 @@ function wireEvents() {
     restoreBackupFile(this.files && this.files[0]);
     this.value = "";
   });
-  document.getElementById("firebase-config-form").addEventListener("submit", function (event) {
-    event.preventDefault();
-    const config = configFromForm();
-    if (!hasConfig(config)) {
-      setFirebaseMessage("Fill in all four Firebase Web app values before saving.", "error");
-      return;
-    }
-    localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
-    firebaseModules = null;
-    firebaseAuth = null;
-    firebaseDb = null;
-    currentUser = null;
-    setFirebaseMessage("Firebase settings saved in this browser. Sign in to sync.", "success");
-    setSyncBadge("", "Local only");
-    showToast("Firebase settings saved.");
-  });
-  document.getElementById("firebase-signin").addEventListener("click", function () { connectFirebase(false); });
-  document.getElementById("firebase-signup").addEventListener("click", function () { connectFirebase(true); });
-  document.getElementById("firebase-signout").addEventListener("click", async function () {
+  document.getElementById("supabase-signin").addEventListener("click", function () { connectSupabase(); });
+  document.getElementById("supabase-signout").addEventListener("click", async function () {
     try {
-      if (firebaseAuth && firebaseModules) await firebaseModules.auth.signOut(firebaseAuth);
-      updateFirebaseLogin(null);
-      setFirebaseMessage("Signed out. Local records remain on this device.", "");
-      showToast("Signed out of Firebase.");
+      if (supabaseClient) {
+        const result = await supabaseClient.auth.signOut();
+        if (result.error) throw result.error;
+      }
+      updateSupabaseLogin(null);
+      setSupabaseMessage("Signed out. Local records remain on this device.", "");
+      showToast("Signed out of cloud sync.");
     } catch (error) {
-      setFirebaseMessage(firebaseErrorText(error), "error");
+      setSupabaseMessage(supabaseErrorText(error), "error");
     }
   });
   window.addEventListener("online", function () {
     setSyncBadge("", currentUser ? "Back online" : "Local only");
     if (currentUser) syncNow();
-    else restoreFirebaseSession();
+    else restoreSupabaseSession();
   });
   window.addEventListener("offline", function () {
     setSyncBadge("", "Offline · saved here");
-    setFirebaseMessage("Offline. New records are saved on this device and can sync when online.", "");
+    setSupabaseMessage("Offline. New records are saved on this device and can sync when online.", "");
   });
 }
 
 async function initialize() {
   wireEvents();
   document.getElementById("month-selector").value = todayKey().slice(0, 7);
-  loadSavedFirebaseConfig();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
     navigator.serviceWorker.register("./service-worker.js").catch(function (error) { console.info("Offline app shell could not be cached yet", error); });
   }
@@ -1280,11 +1214,11 @@ async function initialize() {
       }
     }, 60000);
     if (!navigator.onLine) setSyncBadge("", "Offline · saved here");
-    else if (hasConfig(readFirebaseConfig())) restoreFirebaseSession();
+    else if (hasConfig(readSupabaseConfig())) restoreSupabaseSession();
   } catch (error) {
     console.error(error);
     showToast("Could not open local storage. Use a supported browser profile.", true);
-    setFirebaseMessage("Local database could not open. Records cannot be saved in this browser.", "error");
+    setSupabaseMessage("Local database could not open. Records cannot be saved in this browser.", "error");
   }
 }
 

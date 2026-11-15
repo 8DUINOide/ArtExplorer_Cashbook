@@ -23,31 +23,36 @@ The app stores records in the browser on this computer and the cached app shell 
 
 Amounts are displayed in Philippine pesos (₱).
 
-## Firebase cloud sync
+## Local storage and cloud sync
 
-Local records work without Firebase. To sync to the cloud:
+The local-only database is IndexedDB in the browser on this computer. Records are saved there first, so daily use continues without internet. When cloud sync is configured and the shop account signs in, the app synchronizes records with Supabase PostgreSQL. The cloud sync uses Supabase's client API; it does not connect directly to PostgreSQL from the browser.
 
-1. Create a Firebase project, add a Web app, enable Email/Password Authentication, and create a Cloud Firestore database.
-2. In **Setup → Firebase sync**, enter the Web app's API key, Auth domain, Project ID, and App ID.
-3. Publish the rules in the firestore.rules file in Firebase Console → Firestore Database → Rules.
-4. Create an owner account, then sign in on this device and any other device that should sync.
+The app administrator sets up cloud sync once:
 
-The Firebase web configuration is stored in this browser. The account password is only used for sign-in and is not stored by the app. Use the same owner account on devices that should share this cashbook. The included rules limit cloud access to data owned by the signed-in account.
+1. Create a Supabase project and open its SQL Editor.
+2. Run the SQL in `supabase/schema.sql` to create the cashbook tables and owner-only access policies.
+3. In Supabase Authentication, create the shop's email/password account.
+4. Copy `supabase-config.example.js` to `supabase-config.local.js`, then enter the Project URL and a publishable (`sb_publishable_...`) key.
+5. Serve the app from the same HTTPS address on each device, then sign in with the shop account.
 
-The app writes to local storage first and uploads records when connected. Income, expense, and reimbursement records use unique IDs. A lender payment has one editable daily record per lender, so avoid editing the same lender's payment from two offline devices at once; the latest synced edit wins. Configure Firebase and test a backup before using cloud sync as the only copy of important records.
+`supabase-config.local.js` is ignored by Git so it will not be committed. This app is plain HTML and JavaScript with no build step, so it cannot read a `.env` file directly. The config file is loaded by the browser, so it must contain only the publishable key; never put an `sb_secret_...` or `service_role` key there. Publishable keys are designed for browser apps, and the database policies restrict signed-in accounts to their own records.
+
+For deployments from a Git checkout, provide `supabase-config.local.js` as a deployment-only file or generate it during deployment from the host's environment settings. The same file can be deployed publicly because it contains only the publishable key, not a secret.
+
+Income, expense, and reimbursement records use unique IDs. A lender payment has one editable daily record per lender, so avoid editing the same lender's payment from two offline devices at once; the most recently updated copy wins when they sync. Keep downloading local JSON backups under Activity or Setup.
 
 ## Publish the online version
 
-Firebase Hosting serves the app over HTTPS so it can be opened and installed on other computers or phones. The included firebase.json points Hosting at the app files and includes the Firestore rules file.
+The app needs an HTTPS static host so it can be installed and used on other computers or phones. Firebase Hosting can still serve the app files, but it is only the website host; Supabase is the database and sign-in service. You can also use another static hosting provider.
 
-Install Node.js and the Firebase CLI, then run these commands from this folder:
+For Firebase Hosting, install Node.js and the Firebase CLI, then run these commands from this folder:
 
     npm install -g firebase-tools
     firebase login
     firebase use --add
-    firebase deploy --only hosting,firestore:rules
+    firebase deploy --only hosting
 
-Select the same Firebase project used for Authentication and Firestore. Open the Hosting address provided by Firebase, enter the Firebase Web app values under Setup on each browser profile, then sign in with the same cashbook account. Install the app from the browser menu if desired. Firebase's Hosting setup and deployment flow is documented at https://firebase.google.com/docs/hosting/quickstart. The app's local Windows launcher remains available for this computer.
+Select a Firebase project used for Hosting. No Firestore database or Firestore rules are needed. Open the Hosting address, sign in with the Supabase shop account, and install the app from the browser menu if desired. The app's local Windows launcher remains available for this computer.
 
 ## Notes
 
@@ -56,4 +61,4 @@ Select the same Firebase project used for Authentication and Firestore. Open the
 - The cash movement summary and closing count compare entered records with the physical drawer; they do not replace careful cash handling.
 - Unpaid daily checklist rows remain in Activity after the date changes, so missed payments are visible later.
 
-The local Windows app and the hosted online app use different browser storage locations. If moving records from one to the other, connect and wait for the existing app to show Synced before signing in to the hosted app.
+The local Windows app and the hosted online app use different browser storage locations. Sign into the same Supabase shop account from both to synchronize records between them.

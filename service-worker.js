@@ -1,5 +1,5 @@
-const CACHE_NAME = "artexplorer-cashbook-v2";
-const APP_FILES = ["./", "./index.html", "./styles.css", "./app.js", "./manifest.webmanifest", "./artex-icon.jpg"];
+const CACHE_NAME = "artexplorer-cashbook-v4";
+const APP_FILES = ["./", "./index.html", "./styles.css", "./app.js", "./supabase-config.js", "./manifest.webmanifest", "./artex-icon.jpg"];
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_FILES)));
   self.skipWaiting();
@@ -10,6 +10,13 @@ self.addEventListener("activate", (event) => {
 });
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET" || new URL(event.request.url).origin !== self.location.origin) return;
+  if (new URL(event.request.url).pathname.endsWith("/supabase-config.local.js")) {
+    event.respondWith(fetch(event.request).catch(() => new Response("window.ARTEPLORER_SUPABASE_CONFIG = null;", {
+      status: 200,
+      headers: { "Content-Type": "application/javascript; charset=utf-8" }
+    })));
+    return;
+  }
   event.respondWith(caches.match(event.request).then((cached) => cached || fetch(event.request).then((response) => {
     const copy = response.clone();
     caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));

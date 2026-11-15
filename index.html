@@ -95,15 +95,14 @@
                 <h2>Today at a glance</h2>
               </div>
             </div>
-            <div class="cash-line cash-income-line"><span>Income received in cash</span><strong id="cash-income">0</strong></div>
-            <div class="cash-line cash-expense-line"><span>Shop-paid expenses</span><strong id="cash-expenses">0</strong></div>
-            <div class="cash-line cash-loan-line"><span>Lenders paid from shop cash</span><strong id="cash-loans">0</strong></div>
-            <div class="cash-line cash-reimbursement-line"><span>Staff reimbursements paid</span><strong id="cash-reimbursements">0</strong></div>
-            <div id="cash-net-row" class="cash-line cash-total"><span>Net change in shop cash</span><strong id="cash-net">0</strong></div>
+            <div class="cash-line"><span>Income received in cash</span><strong id="cash-income">0</strong></div>
+            <div class="cash-line"><span>Shop-paid expenses</span><strong id="cash-expenses">0</strong></div>
+            <div class="cash-line"><span>Lenders paid from shop cash</span><strong id="cash-loans">0</strong></div>
+            <div class="cash-line"><span>Staff reimbursements paid</span><strong id="cash-reimbursements">0</strong></div>
+            <div class="cash-line cash-total"><span>Net change in shop cash</span><strong id="cash-net">0</strong></div>
             <div class="formula-note">
               <strong>How it’s calculated</strong>
               <span>Cash income − shop-paid expenses − lender payments from shop cash − staff reimbursements</span>
-              <span class="formula-key">Colored borders identify each part of the calculation.</span>
             </div>
             <p class="helper-note">A negative change means more shop cash was paid out than received today. It does not mean the drawer itself has a negative balance. Expected closing cash = opening cash + net change.</p>
             <button id="record-reimbursement" class="button button-outline full-width" type="button">Reimburse a staff member</button>
@@ -203,36 +202,18 @@
           </section>
 
           <section class="panel">
-            <div class="panel-heading"><div><p class="eyebrow">CLOUD BACKUP</p><h2>Firebase sync</h2></div></div>
-            <p class="section-copy">The app saves on this device first. Add your Firebase web app details to sync records when online. Your Firebase account password is not saved.</p>
-            <form id="firebase-config-form" class="form-stack">
-              <label class="field">API key<input id="firebase-api-key" autocomplete="off" placeholder="Firebase project API key"></label>
-              <div class="two-fields">
-                <label class="field">Auth domain<input id="firebase-auth-domain" autocomplete="off" placeholder="your-project.firebaseapp.com"></label>
-                <label class="field">Project ID<input id="firebase-project-id" autocomplete="off" placeholder="your-project-id"></label>
-              </div>
-              <label class="field">App ID<input id="firebase-app-id" autocomplete="off" placeholder="1:123456:web:..."></label>
-              <button class="button button-soft" type="submit">Save Firebase settings</button>
-            </form>
-            <form id="firebase-login-form" class="form-stack login-form">
-              <label class="field">Owner email<input id="firebase-email" type="email" autocomplete="username" placeholder="name@example.com"></label>
-              <label class="field">Password<input id="firebase-password" type="password" autocomplete="current-password" placeholder="Firebase account password"></label>
+            <div class="panel-heading"><div><p class="eyebrow">CLOUD SYNC</p><h2>Sync across devices</h2></div></div>
+            <p class="section-copy">Records save on this device first. Sign in with the shop account to sync them with your other devices.</p>
+            <form id="supabase-login-form" class="form-stack login-form">
+              <label class="field">Shop account email<input id="supabase-email" type="email" autocomplete="username" placeholder="name@example.com"></label>
+              <label class="field">Password<input id="supabase-password" type="password" autocomplete="current-password" placeholder="Account password"></label>
               <div class="login-actions">
-                <button class="button button-primary" id="firebase-signin" type="button">Sign in & sync</button>
-                <button class="button button-outline" id="firebase-signup" type="button">Create account</button>
+                <button class="button button-primary" id="supabase-signin" type="button">Sign in</button>
               </div>
-              <button class="text-button signout-button" id="firebase-signout" type="button" hidden>Sign out</button>
+              <button class="text-button signout-button" id="supabase-signout" type="button" hidden>Sign out</button>
             </form>
-            <p id="firebase-message" class="inline-message" role="status">Not connected. Local records are safe on this device.</p>
-            <details class="rules-help">
-              <summary>Firebase setup steps</summary>
-              <ol>
-                <li>Create a Firebase project and add a Web app.</li>
-                <li>Enable Email/Password in Authentication and create a Firestore database.</li>
-                <li>Paste the Web app config values above.</li>
-                <li>Publish the included firestore.rules rules before syncing.</li>
-              </ol>
-            </details>
+            <p id="supabase-message" class="inline-message" role="status">Local only. Cloud sync is not set up yet.</p>
+            <p class="helper-note">If sign-in is unavailable, ask the app administrator to finish cloud setup.</p>
           </section>
           <section class="panel">
             <div class="panel-heading"><div><p class="eyebrow">LOCAL BACKUP</p><h2>Protect your records</h2></div></div>
@@ -283,6 +264,8 @@
 
   <datalist id="employee-options"></datalist>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="supabase-config.js"></script>
+  <script src="supabase-config.local.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

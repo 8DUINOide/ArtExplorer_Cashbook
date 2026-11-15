@@ -1,13 +1,10 @@
 {
-  "firestore": {
-    "rules": "firestore.rules"
-  },
   "hosting": {
     "public": ".",
     "ignore": [
       "firebase.json",
-      "firestore.rules",
       "README.md",
+      "supabase/**",
       "Start ArtExplorer Cashbook.bat",
       "**/.*",
       "**/node_modules/**"
