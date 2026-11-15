@@ -1165,7 +1165,6 @@ function wireEvents() {
   document.getElementById("activity-filter").addEventListener("change", renderActivity);
   document.getElementById("month-selector").addEventListener("change", renderMonthly);
   document.getElementById("download-backup").addEventListener("click", downloadBackup);
-  document.getElementById("download-backup-settings").addEventListener("click", downloadBackup);
   document.getElementById("restore-backup").addEventListener("click", function () { document.getElementById("restore-file").click(); });
   document.getElementById("restore-file").addEventListener("change", function () {
     restoreBackupFile(this.files && this.files[0]);

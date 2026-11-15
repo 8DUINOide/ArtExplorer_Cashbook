@@ -165,7 +165,17 @@
       <section id="activity-page" class="page" hidden>
         <div class="page-heading">
           <div><p class="eyebrow">RECORD BOOK</p><h1>Activity</h1><p class="muted">Income, expenses, lender payments, and staff reimbursements.</p></div>
-          <button class="button button-soft" id="download-backup" type="button">↓ Download backup</button>
+          <details class="backup-menu">
+            <summary class="button button-soft">Backup and restore</summary>
+            <div class="backup-menu-content">
+              <p>Use these tools to move records to another browser or recover them from a saved file. Signed-in devices sync through the shop account.</p>
+              <div class="backup-actions">
+                <button class="button button-outline" id="download-backup" type="button">Download backup</button>
+                <button class="button button-soft" id="restore-backup" type="button">Restore a backup</button>
+                <input id="restore-file" type="file" accept="application/json,.json" hidden>
+              </div>
+            </div>
+          </details>
         </div>
         <section class="panel">
           <div class="activity-filters">
@@ -214,16 +224,6 @@
             </form>
             <p id="supabase-message" class="inline-message" role="status">Local only. Cloud sync is not set up yet.</p>
             <p class="helper-note">If sign-in is unavailable, ask the app administrator to finish cloud setup.</p>
-          </section>
-          <section class="panel">
-            <div class="panel-heading"><div><p class="eyebrow">LOCAL BACKUP</p><h2>Protect your records</h2></div></div>
-            <p class="section-copy">Download a copy of the records on this device. Keep the backup somewhere separate from this computer.</p>
-            <div class="backup-actions">
-              <button class="button button-outline" id="download-backup-settings" type="button">Download data backup</button>
-              <button class="button button-soft" id="restore-backup" type="button">Restore a backup</button>
-              <input id="restore-file" type="file" accept="application/json,.json" hidden>
-            </div>
-            <p class="helper-note">Restore merges records with this device. Newer existing records are kept. Amounts are displayed in Philippine pesos (₱).</p>
           </section>
         </div>
       </section>

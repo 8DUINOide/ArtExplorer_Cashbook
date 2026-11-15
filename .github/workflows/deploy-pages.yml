@@ -1,0 +1,55 @@
+name: Deploy ArtExplorer Cashbook
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Prepare the static app
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$SUPABASE_URL" || { echo "::error::Add the SUPABASE_URL repository variable."; exit 1; }
+          case "$SUPABASE_PUBLISHABLE_KEY" in
+            sb_publishable_*) ;;
+            *) echo "::error::SUPABASE_PUBLISHABLE_KEY must be a publishable key."; exit 1 ;;
+          esac
+
+          mkdir -p _site
+          cp index.html styles.css app.js supabase-config.js manifest.webmanifest artex-icon.jpg service-worker.js _site/
+          config_json="$(jq -cn --arg url "$SUPABASE_URL" --arg key "$SUPABASE_PUBLISHABLE_KEY" '{url:$url,publishableKey:$key}')"
+          printf 'window.ARTEPLORER_SUPABASE_CONFIG = %s;\n' "$config_json" > _site/supabase-config.local.js
+          touch _site/.nojekyll
+
+      - name: Upload the site artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,4 +1,4 @@
-const CACHE_NAME = "artexplorer-cashbook-v4";
+const CACHE_NAME = "artexplorer-cashbook-v5";
 const APP_FILES = ["./", "./index.html", "./styles.css", "./app.js", "./supabase-config.js", "./manifest.webmanifest", "./artex-icon.jpg"];
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_FILES)));
