@@ -368,8 +368,12 @@ function entryDisplayTitle(entry) {
   return "Record";
 }
 
-function entryMeta(entry) {
-  const parts = [shortDate(entry.date)];
+function entryMeta(entry, includeTimestamp) {
+  const timestamp = Number(entry.updatedAtMs || entry.createdAtMs || 0);
+  const time = includeTimestamp === true && timestamp > 0
+    ? new Date(timestamp).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", hour12: true }).toLowerCase()
+    : "";
+  const parts = [shortDate(entry.date) + (time ? ", " + time : "")];
   if (entry.type === "income") parts.push(entry.source === "other" ? "Other payment" : "Cash received");
   if (entry.type === "expense") {
     parts.push(entry.source === "personal" ? "Paid personally by " + (entry.employeeName || "staff") : entry.source === "other" ? "Other payment" : "Paid from shop cash");
@@ -390,14 +394,14 @@ function entryMeta(entry) {
   return parts.join(" · ");
 }
 
-function activityHtml(entry) {
+function activityHtml(entry, includeTimestamp) {
   const symbol = entry.type === "income" ? "+" : entry.type === "cash_close" ? "" : "−";
   const icon = entry.type === "income" ? "↗" : entry.type === "expense" ? "↙" : entry.type === "lender_payment" ? "↘" : "↗";
   const voidControl = entry.voided ? '<span class="activity-meta voided-label">Voided</span>' : entry.unpaid ? '<span class="activity-meta voided-label">Not paid</span>' : entry.type === "lender_payment" || entry.type === "cash_close" ? '<span class="activity-meta">Saved</span>' : '<button class="text-button void-action" data-entry="' + escapeHtml(entry.id) + '" type="button">Void</button>';
   const amountLabel = entry.unpaid ? "Due " + money(entry.dueCents) : entry.type === "cash_close" ? "Count " + money(entry.countedCents) : symbol + money(entry.amountCents);
   return '<div class="activity-item' + (entry.voided ? " voided-item" : entry.unpaid ? " unpaid-item" : "") + '">' +
     '<span class="activity-icon ' + escapeHtml(entry.type) + '">' + icon + "</span>" +
-    '<div><div class="activity-title">' + escapeHtml(entryDisplayTitle(entry)) + '</div><div class="activity-meta">' + escapeHtml(entryMeta(entry)) + "</div></div>" +
+    '<div><div class="activity-title">' + escapeHtml(entryDisplayTitle(entry)) + '</div><div class="activity-meta">' + escapeHtml(entryMeta(entry, includeTimestamp)) + "</div></div>" +
     '<div class="activity-trailing"><div class="activity-amount ' + escapeHtml(entry.type) + '">' + amountLabel + "</div>" + voidControl + "</div>" +
     "</div>";
 }
@@ -449,6 +453,7 @@ async function renderToday() {
   let dueTotal = 0;
   let paidTotal = 0;
   let fullyPaid = 0;
+  let partiallyPaid = 0;
   const lenderHost = document.getElementById("lender-list");
   lenderHost.innerHTML = "";
   lenders.forEach(function (lender) {
@@ -459,6 +464,7 @@ async function renderToday() {
     dueTotal += due;
     paidTotal += paid;
     if (paid >= due && due > 0) fullyPaid += 1;
+    else if (paid > 0) partiallyPaid += 1;
     const row = document.createElement("div");
     row.className = "lender-row";
     let status = "";
@@ -485,11 +491,13 @@ async function renderToday() {
   document.getElementById("payments-summary").innerHTML =
     "<span>Due today <strong>" + money(dueTotal) + "</strong></span>" +
     "<span>Recorded <strong>" + money(paidTotal) + "</strong></span>" +
-    "<span>Fully paid <strong>" + fullyPaid + " / " + lenders.length + "</strong></span>";
-  document.getElementById("metric-lenders").innerHTML = fullyPaid + ' <small>/ ' + lenders.length + " paid</small>";
+    "<span>Full payments <strong>" + fullyPaid + "</strong></span>" +
+    "<span>Partial payments <strong>" + partiallyPaid + "</strong></span>";
+  document.getElementById("metric-lenders").innerHTML = (fullyPaid + partiallyPaid) + ' <small>/ ' + lenders.length + " paid</small>";
   document.getElementById("metric-lenders-amount").textContent = money(paidTotal);
+  document.getElementById("metric-lenders-breakdown").textContent = fullyPaid + " full · " + partiallyPaid + " partial";
   document.getElementById("metric-lenders-sub").textContent = lenders.length
-    ? "paid today · " + money(Math.max(0, dueTotal - paidTotal)) + " remaining"
+    ? money(Math.max(0, dueTotal - paidTotal)) + " remaining"
     : "Set up your daily list";
   document.getElementById("today-date").textContent = dayLabel(date);
 
@@ -704,7 +712,7 @@ async function renderActivity() {
   const filter = document.getElementById("activity-filter").value;
   const filtered = allEntries.filter(function (entry) { return filter === "all" || entry.type === filter; })
     .sort(function (a, b) { return String(b.date).localeCompare(String(a.date)) || Number(b.updatedAtMs || 0) - Number(a.updatedAtMs || 0); });
-  document.getElementById("all-activity").innerHTML = filtered.map(activityHtml).join("");
+  document.getElementById("all-activity").innerHTML = filtered.map(function (entry) { return activityHtml(entry, true); }).join("");
   document.getElementById("empty-activity").hidden = filtered.length > 0;
   document.getElementById("all-activity").querySelectorAll(".void-action").forEach(function (button) {
     button.addEventListener("click", async function () {
