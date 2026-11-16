@@ -783,8 +783,10 @@ async function renderMonthly() {
   const year = Number(monthKey.slice(0, 4));
   const month = Number(monthKey.slice(5, 7));
   const daysInMonth = new Date(year, month, 0).getDate();
+  const activeLenderIds = new Set((await getActiveLenders()).map(function (lender) { return lender.id; }));
   const allEntries = (await readAll("entries")).filter(function (entry) {
-    return !entry.voided && entry.date.slice(0, 7) === monthKey;
+    return !entry.voided && entry.date.slice(0, 7) === monthKey &&
+      (entry.type !== "lender_payment" || activeLenderIds.has(entry.lenderId));
   });
   const activities = allEntries.filter(function (entry) {
     return ["income", "expense", "lender_payment", "reimbursement"].includes(entry.type) && !(entry.type === "lender_payment" && entry.unpaid);
