@@ -497,7 +497,10 @@ async function renderToday() {
   const expenses = entries.filter(function (entry) { return entry.type === "expense"; }).reduce(function (sum, entry) { return sum + Number(entry.amountCents || 0); }, 0);
   const cashIncome = entries.filter(function (entry) { return entry.type === "income" && entry.source !== "other"; }).reduce(function (sum, entry) { return sum + Number(entry.amountCents || 0); }, 0);
   const cashExpenses = entries.filter(function (entry) { return entry.type === "expense" && entry.source === "shop_cash"; }).reduce(function (sum, entry) { return sum + Number(entry.amountCents || 0); }, 0);
-  const lenderCash = entries.filter(function (entry) { return entry.type === "lender_payment"; }).reduce(function (sum, entry) { return sum + Number(entry.shopCents || 0); }, 0);
+  const lenderCash = lenders.reduce(function (sum, lender) {
+    const payment = payments.get(lender.id);
+    return sum + Number(payment ? payment.shopCents || 0 : 0);
+  }, 0);
   const reimbursements = entries.filter(function (entry) { return entry.type === "reimbursement"; }).reduce(function (sum, entry) { return sum + Number(entry.amountCents || 0); }, 0);
   const allEntries = await readAll("entries");
   const staffOwed = totalStaffOwed(allEntries);
@@ -511,7 +514,7 @@ async function renderToday() {
   document.getElementById("cash-loans").textContent = money(lenderCash);
   document.getElementById("cash-reimbursements").textContent = money(reimbursements);
   document.getElementById("cash-net").textContent = money(netCashChange);
-  renderClosingPanel(date, allEntries);
+  renderClosingPanel(date, allEntries, new Set(lenders.map(function (lender) { return lender.id; })));
   const recent = entries.slice().sort(function (a, b) { return Number(b.updatedAtMs || 0) - Number(a.updatedAtMs || 0); }).slice(0, 5);
   document.getElementById("today-activity").innerHTML = recent.length ? recent.map(activityHtml).join("") : '<div class="empty-state compact"><p>No entries today yet. Start with income, an expense, or a lender payment.</p></div>';
 
@@ -544,7 +547,7 @@ async function renderToday() {
   });
 }
 
-function renderClosingPanel(date, allEntries) {
+function renderClosingPanel(date, allEntries, activeLenderIds) {
   const todayClose = allEntries.find(function (entry) { return entry.type === "cash_close" && entry.date === date && !entry.voided; });
   const previousClose = allEntries.filter(function (entry) { return entry.type === "cash_close" && entry.date < date && !entry.voided; })
     .sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); })[0];
@@ -556,7 +559,7 @@ function renderClosingPanel(date, allEntries) {
     if (entry.date !== date || entry.voided) return false;
     return (entry.type === "income" && entry.source !== "other") ||
       (entry.type === "expense" && entry.source === "shop_cash") ||
-      (entry.type === "lender_payment" && Number(entry.shopCents || 0) > 0) ||
+      (entry.type === "lender_payment" && activeLenderIds.has(entry.lenderId) && Number(entry.shopCents || 0) > 0) ||
       entry.type === "reimbursement";
   });
   const lastMovement = cashActivity.reduce(function (latest, entry) { return Math.max(latest, Number(entry.updatedAtMs || 0)); }, 0);
