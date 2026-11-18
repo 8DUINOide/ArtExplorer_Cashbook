@@ -739,6 +739,7 @@ function chartAmount(cents) {
 }
 
 let monthlyChartSeries = "loans";
+let monthlyChartSelectedDay = null;
 
 function renderMonthlyChart(days) {
   const series = {
@@ -774,11 +775,36 @@ function renderMonthlyChart(days) {
   });
   svg += '<polyline fill="none" stroke="' + series.color + '" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points="' + points.map(function (point) { return point.x + "," + point.y; }).join(" ") + '"/>';
   points.forEach(function (point) {
-    svg += '<circle cx="' + point.x + '" cy="' + point.y + '" r="3.5" fill="' + series.color + '" stroke="#fff" stroke-width="1.5"><title>' + escapeHtml(point.day.label) + " - " + escapeHtml(series.label) + ": " + money(point.value) + "</title></circle>";
+    const selected = point.day.dayNumber === monthlyChartSelectedDay;
+    const ariaLabel = point.day.label + ", " + series.label + ": " + money(point.value) + ". Select to show details.";
+    svg += '<circle cx="' + point.x + '" cy="' + point.y + '" r="3.5" fill="' + series.color + '" stroke="#fff" stroke-width="1.5" pointer-events="none"/>';
+    svg += '<circle class="chart-point-hit-area' + (selected ? ' selected' : '') + '" data-day="' + point.day.dayNumber + '" cx="' + point.x + '" cy="' + point.y + '" r="12" fill="transparent" stroke="transparent" role="button" tabindex="0" aria-label="' + escapeHtml(ariaLabel) + '"><title>' + escapeHtml(point.day.label + " - " + series.label + ": " + money(point.value)) + "</title></circle>";
     svg += '<text x="' + point.x + '" y="' + (height - 15) + '" text-anchor="middle" class="chart-axis-label">' + escapeHtml(point.day.shortLabel) + "</text>";
   });
   svg += "</svg>";
   document.getElementById("monthly-chart-wrap").innerHTML = svg;
+  const detail = document.getElementById("monthly-chart-detail");
+  const selectedPoint = points.find(function (point) { return point.day.dayNumber === monthlyChartSelectedDay; });
+  detail.textContent = selectedPoint
+    ? selectedPoint.day.label + " - " + series.label + ": " + money(selectedPoint.value)
+    : "Tap a chart point to see that day's " + series.label.toLowerCase() + " amount.";
+  document.querySelectorAll(".chart-point-hit-area").forEach(function (pointButton) {
+    function selectPoint() {
+      monthlyChartSelectedDay = Number(pointButton.dataset.day);
+      const point = points.find(function (item) { return item.day.dayNumber === monthlyChartSelectedDay; });
+      detail.textContent = point.day.label + " - " + series.label + ": " + money(point.value);
+      document.querySelectorAll(".chart-point-hit-area").forEach(function (otherPoint) {
+        otherPoint.classList.toggle("selected", otherPoint === pointButton);
+      });
+    }
+    pointButton.addEventListener("click", selectPoint);
+    pointButton.addEventListener("keydown", function (event) {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        selectPoint();
+      }
+    });
+  });
   document.querySelectorAll("[data-chart-series]").forEach(function (button) {
     const selected = button.dataset.chartSeries === monthlyChartSeries;
     button.setAttribute("aria-pressed", selected ? "true" : "false");
@@ -1177,7 +1203,10 @@ function wireEvents() {
   document.querySelectorAll(".close-payment-dialog,.cancel-payment-dialog").forEach(function (button) { button.addEventListener("click", function () { document.getElementById("payment-dialog").close(); }); });
   document.getElementById("lender-form").addEventListener("submit", addLender);
   document.getElementById("activity-filter").addEventListener("change", renderActivity);
-  document.getElementById("month-selector").addEventListener("change", renderMonthly);
+  document.getElementById("month-selector").addEventListener("change", function () {
+    monthlyChartSelectedDay = null;
+    renderMonthly();
+  });
   document.querySelectorAll("[data-chart-series]").forEach(function (button) {
     button.addEventListener("click", function () {
       monthlyChartSeries = button.dataset.chartSeries;
