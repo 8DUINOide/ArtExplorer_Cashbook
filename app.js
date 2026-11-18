@@ -738,8 +738,16 @@ function chartAmount(cents) {
   return "₱" + amount.toFixed(0);
 }
 
-function renderMonthlyChart(weeks) {
-  const width = 760;
+let monthlyChartSeries = "loans";
+
+function renderMonthlyChart(days) {
+  const series = {
+    income: { label: "Income", color: "#438655" },
+    expenses: { label: "Expenses", color: "#dc9850" },
+    loans: { label: "Lender payments", color: "#6479a4" }
+  }[monthlyChartSeries];
+  const chartHost = document.getElementById("monthly-chart-wrap");
+  const width = Math.max(760, chartHost.clientWidth, 83 + days.length * 34);
   const height = 330;
   const left = 65;
   const right = 18;
@@ -748,41 +756,34 @@ function renderMonthlyChart(weeks) {
   const plotWidth = width - left - right;
   const plotHeight = height - top - bottom;
   let maximum = 0;
-  weeks.forEach(function (week) {
-    maximum = Math.max(maximum, week.income, week.expenses, week.loans);
+  days.forEach(function (day) {
+    maximum = Math.max(maximum, Number(day[monthlyChartSeries] || 0));
   });
   const scaleMaximum = maximum > 0 ? maximum * 1.15 : 100;
-  let svg = '<svg class="monthly-chart" viewBox="0 0 ' + width + " " + height + '" role="img" aria-label="Weekly income, expenses, and lender payment comparison">';
+  let svg = '<svg class="monthly-chart" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + " " + height + '" role="img" aria-label="Daily ' + escapeHtml(series.label) + ' for the selected month">';
   for (let tick = 0; tick <= 4; tick += 1) {
     const y = top + plotHeight - (plotHeight * tick / 4);
     const value = scaleMaximum * tick / 4;
     svg += '<line x1="' + left + '" y1="' + y + '" x2="' + (width - right) + '" y2="' + y + '" class="chart-gridline"/>';
     svg += '<text x="' + (left - 8) + '" y="' + (y + 4) + '" text-anchor="end" class="chart-axis-label">' + chartAmount(value) + "</text>";
   }
-  const groupWidth = plotWidth / Math.max(weeks.length, 1);
-  const barWidth = Math.min(24, groupWidth / 5);
-  const series = [
-    { key: "income", color: "#438655" },
-    { key: "expenses", color: "#dc9850" },
-    { key: "loans", color: "#6479a4" }
-  ];
-  weeks.forEach(function (week, index) {
-    const groupCenter = left + groupWidth * index + groupWidth / 2;
-    const spacing = barWidth + 5;
-    const startX = groupCenter - (spacing * 3 - 5) / 2;
-    series.forEach(function (item, seriesIndex) {
-      const value = Number(week[item.key] || 0);
-      const barHeight = Math.max(value > 0 ? 2 : 0, plotHeight * value / scaleMaximum);
-      const x = startX + seriesIndex * spacing;
-      const y = top + plotHeight - barHeight;
-      svg += '<rect x="' + x + '" y="' + y + '" width="' + barWidth + '" height="' + barHeight + '" rx="3" fill="' + item.color + '"><title>' + escapeHtml(week.label) + " · " + escapeHtml(item.key) + ": " + money(value) + "</title></rect>";
-    });
-    svg += '<text x="' + groupCenter + '" y="' + (height - 15) + '" text-anchor="middle" class="chart-axis-label">' + escapeHtml(week.shortLabel) + "</text>";
+  const step = plotWidth / Math.max(days.length - 1, 1);
+  const points = days.map(function (day, index) {
+    const value = Number(day[monthlyChartSeries] || 0);
+    return { x: left + step * index, y: top + plotHeight - plotHeight * value / scaleMaximum, day: day, value: value };
+  });
+  svg += '<polyline fill="none" stroke="' + series.color + '" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points="' + points.map(function (point) { return point.x + "," + point.y; }).join(" ") + '"/>';
+  points.forEach(function (point) {
+    svg += '<circle cx="' + point.x + '" cy="' + point.y + '" r="3.5" fill="' + series.color + '" stroke="#fff" stroke-width="1.5"><title>' + escapeHtml(point.day.label) + " - " + escapeHtml(series.label) + ": " + money(point.value) + "</title></circle>";
+    svg += '<text x="' + point.x + '" y="' + (height - 15) + '" text-anchor="middle" class="chart-axis-label">' + escapeHtml(point.day.shortLabel) + "</text>";
   });
   svg += "</svg>";
   document.getElementById("monthly-chart-wrap").innerHTML = svg;
+  document.querySelectorAll("[data-chart-series]").forEach(function (button) {
+    const selected = button.dataset.chartSeries === monthlyChartSeries;
+    button.setAttribute("aria-pressed", selected ? "true" : "false");
+  });
 }
-
 async function renderMonthly() {
   const selector = document.getElementById("month-selector");
   if (!selector.value) selector.value = todayKey().slice(0, 7);
@@ -799,42 +800,42 @@ async function renderMonthly() {
   const activities = allEntries.filter(function (entry) {
     return ["income", "expense", "lender_payment", "reimbursement"].includes(entry.type) && !(entry.type === "lender_payment" && entry.unpaid);
   });
-  const weeks = [];
-  for (let start = 1; start <= daysInMonth; start += 7) {
-    const end = Math.min(start + 6, daysInMonth);
-    weeks.push({ start: start, end: end, label: "Days " + start + "–" + end, shortLabel: "W" + (weeks.length + 1), income: 0, expenses: 0, loans: 0, advances: 0, netCash: 0 });
+  const days = [];
+  for (let dayNumber = 1; dayNumber <= daysInMonth; dayNumber += 1) {
+    const label = new Date(year, month - 1, dayNumber).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    days.push({ dayNumber: dayNumber, label: label, shortLabel: String(dayNumber), income: 0, expenses: 0, loans: 0, advances: 0, netCash: 0 });
   }
   const totals = { income: 0, expenses: 0, loans: 0, advances: 0, netCash: 0 };
   allEntries.forEach(function (entry) {
     const day = Number(entry.date.slice(8, 10));
-    const week = weeks[Math.min(weeks.length - 1, Math.floor((day - 1) / 7))];
-    if (!week) return;
+    const daily = days[day - 1];
+    if (!daily) return;
     if (entry.type === "income") {
-      week.income += Number(entry.amountCents || 0);
+      daily.income += Number(entry.amountCents || 0);
       totals.income += Number(entry.amountCents || 0);
       if (entry.source !== "other") {
-        week.netCash += Number(entry.amountCents || 0);
+        daily.netCash += Number(entry.amountCents || 0);
         totals.netCash += Number(entry.amountCents || 0);
       }
     } else if (entry.type === "expense") {
-      week.expenses += Number(entry.amountCents || 0);
+      daily.expenses += Number(entry.amountCents || 0);
       totals.expenses += Number(entry.amountCents || 0);
       if (entry.source === "personal") {
-        week.advances += Number(entry.amountCents || 0);
+        daily.advances += Number(entry.amountCents || 0);
         totals.advances += Number(entry.amountCents || 0);
       } else if (entry.source === "shop_cash") {
-        week.netCash -= Number(entry.amountCents || 0);
+        daily.netCash -= Number(entry.amountCents || 0);
         totals.netCash -= Number(entry.amountCents || 0);
       }
     } else if (entry.type === "lender_payment") {
-      week.loans += Number(entry.amountCents || 0);
-      week.advances += Number(entry.personalCents || 0);
+      daily.loans += Number(entry.amountCents || 0);
+      daily.advances += Number(entry.personalCents || 0);
       totals.loans += Number(entry.amountCents || 0);
       totals.advances += Number(entry.personalCents || 0);
-      week.netCash -= Number(entry.shopCents || 0);
+      daily.netCash -= Number(entry.shopCents || 0);
       totals.netCash -= Number(entry.shopCents || 0);
     } else if (entry.type === "reimbursement") {
-      week.netCash -= Number(entry.amountCents || 0);
+      daily.netCash -= Number(entry.amountCents || 0);
       totals.netCash -= Number(entry.amountCents || 0);
     }
   });
@@ -845,12 +846,12 @@ async function renderMonthly() {
   document.getElementById("month-loans").textContent = money(totals.loans);
   document.getElementById("month-advances").textContent = money(totals.advances);
   document.getElementById("month-net").textContent = money(totals.netCash);
-  renderMonthlyChart(weeks);
+  renderMonthlyChart(days);
   document.getElementById("monthly-empty").hidden = activities.length > 0;
   document.getElementById("monthly-table-wrap").innerHTML =
-    '<table class="monthly-table"><thead><tr><th>Week</th><th>Income</th><th>Expenses</th><th>Lender payments</th><th>Staff advances</th><th>Net shop cash</th></tr></thead><tbody>' +
-    weeks.map(function (week) {
-      return "<tr><th>" + escapeHtml(week.label) + "</th><td>" + money(week.income) + "</td><td>" + money(week.expenses) + "</td><td>" + money(week.loans) + "</td><td>" + money(week.advances) + "</td><td>" + money(week.netCash) + "</td></tr>";
+    '<table class="monthly-table"><thead><tr><th>Day</th><th>Income</th><th>Expenses</th><th>Lender payments</th><th>Staff advances</th><th>Net shop cash</th></tr></thead><tbody>' +
+    days.map(function (daily) {
+      return "<tr><th>" + escapeHtml(daily.label) + "</th><td>" + money(daily.income) + "</td><td>" + money(daily.expenses) + "</td><td>" + money(daily.loans) + "</td><td>" + money(daily.advances) + "</td><td>" + money(daily.netCash) + "</td></tr>";
     }).join("") + "</tbody></table>";
 }
 
@@ -1177,6 +1178,12 @@ function wireEvents() {
   document.getElementById("lender-form").addEventListener("submit", addLender);
   document.getElementById("activity-filter").addEventListener("change", renderActivity);
   document.getElementById("month-selector").addEventListener("change", renderMonthly);
+  document.querySelectorAll("[data-chart-series]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      monthlyChartSeries = button.dataset.chartSeries;
+      renderMonthly();
+    });
+  });
   document.getElementById("download-backup").addEventListener("click", downloadBackup);
   document.getElementById("restore-backup").addEventListener("click", function () { document.getElementById("restore-file").click(); });
   document.getElementById("restore-file").addEventListener("change", function () {

@@ -146,7 +146,7 @@
 
       <section id="monthly-page" class="page" hidden>
         <div class="page-heading">
-          <div><p class="eyebrow">MONTHLY OVERVIEW</p><h1>Monthly data</h1><p class="muted">Income, expenses, lender payments, and staff advances by week.</p></div>
+          <div><p class="eyebrow">MONTHLY OVERVIEW</p><h1>Monthly data</h1><p class="muted">Income, expenses, lender payments, and staff advances by day.</p></div>
           <label class="field month-picker">Month<input id="month-selector" type="month"></label>
         </div>
         <div class="monthly-metrics">
@@ -158,8 +158,12 @@
         </div>
         <section class="panel monthly-chart-panel">
           <div class="panel-heading">
-            <div><p class="eyebrow">WEEKLY COMPARISON</p><h2 id="monthly-chart-title">This month</h2></div>
-            <div class="chart-legend"><span><i class="legend-income"></i>Income</span><span><i class="legend-expense"></i>Expenses</span><span><i class="legend-loans"></i>Lender payments</span></div>
+            <div><p class="eyebrow">DAILY TREND</p><h2 id="monthly-chart-title">This month</h2></div>
+            <div class="chart-legend" role="group" aria-label="Choose chart data">
+              <button class="chart-series-button legend-income" type="button" data-chart-series="income" aria-pressed="false">Income</button>
+              <button class="chart-series-button legend-expense" type="button" data-chart-series="expenses" aria-pressed="false">Expenses</button>
+              <button class="chart-series-button legend-loans" type="button" data-chart-series="loans" aria-pressed="true">Lender payments</button>
+            </div>
           </div>
           <div id="monthly-chart-wrap" class="chart-wrap"></div>
           <div id="monthly-table-wrap" class="monthly-table-wrap"></div>
