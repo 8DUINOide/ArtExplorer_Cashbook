@@ -176,6 +176,20 @@ function withoutLocalFields(record) {
   return copy;
 }
 
+function isUnpaidChecklistPlaceholder(record) {
+  return Boolean(record && record.type === "lender_payment" && record.unpaid === true && Number(record.amountCents || 0) === 0);
+}
+
+function compareSyncPriority(localRecord, cloudRecord) {
+  const localIsPlaceholder = isUnpaidChecklistPlaceholder(localRecord);
+  const cloudIsPlaceholder = isUnpaidChecklistPlaceholder(cloudRecord);
+  if (localIsPlaceholder !== cloudIsPlaceholder) return localIsPlaceholder ? -1 : 1;
+
+  const localUpdatedAt = Number(localRecord.updatedAtMs || 0);
+  const cloudUpdatedAt = Number(cloudRecord.updatedAtMs || 0);
+  return localUpdatedAt === cloudUpdatedAt ? 0 : localUpdatedAt > cloudUpdatedAt ? 1 : -1;
+}
+
 async function markSyncState(storeName, record, state) {
   const next = Object.assign({}, record, { syncState: state });
   await writeOne(storeName, next);
@@ -247,10 +261,11 @@ async function syncTable(client, uid, storeName, tableName) {
 
   for (const [id, cloudRecord] of remote) {
     const localRecord = localById.get(id);
-    if (!localRecord || Number(cloudRecord.updatedAtMs || 0) > Number(localRecord.updatedAtMs || 0)) {
+    const priority = localRecord ? compareSyncPriority(localRecord, cloudRecord) : -1;
+    if (!localRecord || priority < 0) {
       await writeOne(storeName, Object.assign({}, cloudRecord, { syncState: "synced" }));
       localById.set(id, Object.assign({}, cloudRecord, { syncState: "synced" }));
-    } else if (Number(cloudRecord.updatedAtMs || 0) === Number(localRecord.updatedAtMs || 0)) {
+    } else if (priority === 0) {
       const synced = Object.assign({}, localRecord, { syncState: "synced" });
       await writeOne(storeName, synced);
       localById.set(id, synced);
@@ -260,7 +275,7 @@ async function syncTable(client, uid, storeName, tableName) {
   const toUpload = [];
   for (const [id, localRecord] of localById) {
     const cloudRecord = remote.get(id);
-    if (!cloudRecord || Number(localRecord.updatedAtMs || 0) > Number(cloudRecord.updatedAtMs || 0)) {
+    if (!cloudRecord || compareSyncPriority(localRecord, cloudRecord) > 0) {
       toUpload.push({
         owner_id: uid,
         id: id,
