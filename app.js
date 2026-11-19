@@ -756,7 +756,24 @@ function chartAmount(cents) {
 let monthlyChartSeries = "loans";
 let monthlyChartSelectedDay = null;
 
-function renderMonthlyChart(days) {
+function setMonthlyChartDetail(detail, point, series, lenderCount) {
+  const amountDetail = point.day.label + " - " + series.label + ": " + money(point.value);
+  if (monthlyChartSeries !== "loans") {
+    detail.textContent = amountDetail;
+    return;
+  }
+  const paid = point.day.loansFull + point.day.loansPartial;
+  detail.replaceChildren(document.createTextNode(amountDetail));
+  detail.append(document.createElement("br"));
+  const paidCount = document.createElement("strong");
+  paidCount.textContent = paid + " / " + lenderCount + " paid";
+  const paymentBreakdown = document.createElement("span");
+  paymentBreakdown.className = "chart-payment-breakdown";
+  paymentBreakdown.textContent = point.day.loansFull + " full · " + point.day.loansPartial + " partial";
+  detail.append(paidCount, paymentBreakdown);
+}
+
+function renderMonthlyChart(days, lenderCount) {
   const series = {
     income: { label: "Income", color: "#438655" },
     expenses: { label: "Expenses", color: "#dc9850" },
@@ -800,14 +817,13 @@ function renderMonthlyChart(days) {
   document.getElementById("monthly-chart-wrap").innerHTML = svg;
   const detail = document.getElementById("monthly-chart-detail");
   const selectedPoint = points.find(function (point) { return point.day.dayNumber === monthlyChartSelectedDay; });
-  detail.textContent = selectedPoint
-    ? selectedPoint.day.label + " - " + series.label + ": " + money(selectedPoint.value)
-    : "Tap a chart point to see that day's " + series.label.toLowerCase() + " amount.";
+  if (selectedPoint) setMonthlyChartDetail(detail, selectedPoint, series, lenderCount);
+  else detail.textContent = "Tap a chart point to see that day's " + series.label.toLowerCase() + " amount.";
   document.querySelectorAll(".chart-point-hit-area").forEach(function (pointButton) {
     function selectPoint() {
       monthlyChartSelectedDay = Number(pointButton.dataset.day);
       const point = points.find(function (item) { return item.day.dayNumber === monthlyChartSelectedDay; });
-      detail.textContent = point.day.label + " - " + series.label + ": " + money(point.value);
+      setMonthlyChartDetail(detail, point, series, lenderCount);
       document.querySelectorAll(".chart-point-hit-area").forEach(function (otherPoint) {
         otherPoint.classList.toggle("selected", otherPoint === pointButton);
       });
@@ -844,7 +860,7 @@ async function renderMonthly() {
   const days = [];
   for (let dayNumber = 1; dayNumber <= daysInMonth; dayNumber += 1) {
     const label = new Date(year, month - 1, dayNumber).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-    days.push({ dayNumber: dayNumber, label: label, shortLabel: String(dayNumber), income: 0, expenses: 0, loans: 0, advances: 0, netCash: 0 });
+    days.push({ dayNumber: dayNumber, label: label, shortLabel: String(dayNumber), income: 0, expenses: 0, loans: 0, loansFull: 0, loansPartial: 0, advances: 0, netCash: 0 });
   }
   const totals = { income: 0, expenses: 0, loans: 0, advances: 0, netCash: 0 };
   allEntries.forEach(function (entry) {
@@ -870,6 +886,10 @@ async function renderMonthly() {
       }
     } else if (entry.type === "lender_payment") {
       daily.loans += Number(entry.amountCents || 0);
+      const paid = Number(entry.amountCents || 0);
+      const due = Number(entry.dueCents || 0);
+      if (!entry.unpaid && paid >= due && due > 0) daily.loansFull += 1;
+      else if (!entry.unpaid && paid > 0) daily.loansPartial += 1;
       daily.advances += Number(entry.personalCents || 0);
       totals.loans += Number(entry.amountCents || 0);
       totals.advances += Number(entry.personalCents || 0);
@@ -887,7 +907,7 @@ async function renderMonthly() {
   document.getElementById("month-loans").textContent = money(totals.loans);
   document.getElementById("month-advances").textContent = money(totals.advances);
   document.getElementById("month-net").textContent = money(totals.netCash);
-  renderMonthlyChart(days);
+  renderMonthlyChart(days, activeLenderIds.size);
   document.getElementById("monthly-empty").hidden = activities.length > 0;
   document.getElementById("monthly-table-wrap").innerHTML =
     '<table class="monthly-table"><thead><tr><th>Day</th><th>Income</th><th>Expenses</th><th>Lender payments</th><th>Staff advances</th><th>Net shop cash</th></tr></thead><tbody>' +
