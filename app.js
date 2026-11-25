@@ -181,6 +181,10 @@ function isUnpaidChecklistPlaceholder(record) {
 }
 
 function compareSyncPriority(localRecord, cloudRecord) {
+  const localIsDeleted = Boolean(localRecord && (localRecord.voided === true || localRecord.active === false));
+  const cloudIsDeleted = Boolean(cloudRecord && (cloudRecord.voided === true || cloudRecord.active === false));
+  if (localIsDeleted !== cloudIsDeleted) return localIsDeleted ? 1 : -1;
+
   const localIsPlaceholder = isUnpaidChecklistPlaceholder(localRecord);
   const cloudIsPlaceholder = isUnpaidChecklistPlaceholder(cloudRecord);
   if (localIsPlaceholder !== cloudIsPlaceholder) return localIsPlaceholder ? -1 : 1;
@@ -756,24 +760,87 @@ function chartAmount(cents) {
 let monthlyChartSeries = "loans";
 let monthlyChartSelectedDay = null;
 
-function setMonthlyChartDetail(detail, point, series, lenderCount) {
-  const amountDetail = point.day.label + " - " + series.label + ": " + money(point.value);
-  if (monthlyChartSeries !== "loans") {
-    detail.textContent = amountDetail;
-    return;
+function appendMonthlyReceiptSection(detail, entries, emptyText, rowLabel) {
+  const section = document.createElement("div");
+  section.className = "chart-receipt-list";
+  if (!entries.length) {
+    const empty = document.createElement("p");
+    empty.className = "chart-receipt-empty";
+    empty.textContent = emptyText;
+    section.appendChild(empty);
   }
-  const paid = point.day.loansFull + point.day.loansPartial;
-  detail.replaceChildren(document.createTextNode(amountDetail));
-  detail.append(document.createElement("br"));
-  const paidCount = document.createElement("strong");
-  paidCount.textContent = paid + " / " + lenderCount + " paid";
-  const paymentBreakdown = document.createElement("span");
-  paymentBreakdown.className = "chart-payment-breakdown";
-  paymentBreakdown.textContent = point.day.loansFull + " full · " + point.day.loansPartial + " partial";
-  detail.append(paidCount, paymentBreakdown);
+  entries.forEach(function (entry, index) {
+    const row = document.createElement("div");
+    row.className = "chart-receipt-row";
+    const number = document.createElement("span");
+    number.className = "chart-receipt-number";
+    number.textContent = String(index + 1) + ".";
+    const label = document.createElement("span");
+    label.className = "chart-receipt-label";
+    label.textContent = rowLabel(entry);
+    const amount = document.createElement("span");
+    amount.className = "chart-receipt-amount";
+    amount.textContent = money(entry.amountCents);
+    row.append(number, label, amount);
+    section.appendChild(row);
+  });
+  detail.appendChild(section);
 }
 
-function renderMonthlyChart(days, lenderCount) {
+function setMonthlyChartDetail(detail, point, series, monthEntries, lenderCount, lenderOrder) {
+  const dateEntries = monthEntries.filter(function (entry) {
+    return entry.date === point.day.dateKey && !entry.voided;
+  });
+  const incomeEntries = dateEntries.filter(function (entry) { return entry.type === "income"; });
+  const expenseEntries = dateEntries.filter(function (entry) { return entry.type === "expense"; });
+  const lenderDayEntries = dateEntries.filter(function (entry) { return entry.type === "lender_payment"; });
+  const lenderEntries = lenderDayEntries.filter(function (entry) {
+    return !entry.unpaid && Number(entry.amountCents || 0) > 0;
+  }).sort(function (a, b) {
+    const aOrder = lenderOrder.has(a.lenderId) ? lenderOrder.get(a.lenderId) : Infinity;
+    const bOrder = lenderOrder.has(b.lenderId) ? lenderOrder.get(b.lenderId) : Infinity;
+    return aOrder - bOrder || String(a.lenderName || "").localeCompare(String(b.lenderName || ""));
+  });
+
+  detail.replaceChildren();
+  const content = document.createElement("div");
+  content.className = "chart-receipt-content";
+  const header = document.createElement("div");
+  header.className = "chart-receipt-header";
+  const heading = document.createElement("strong");
+  heading.textContent = point.day.label + " - " + series.label;
+  const total = document.createElement("span");
+  total.textContent = "Total: " + money(point.value);
+  header.append(heading, total);
+  content.appendChild(header);
+
+  if (monthlyChartSeries === "income") {
+    appendMonthlyReceiptSection(content, incomeEntries, "No income recorded.", function (entry) {
+      return entry.note && entry.category ? entry.note + " (" + entry.category + ")" : entry.note || entry.category || "Income";
+    });
+  } else if (monthlyChartSeries === "expenses") {
+    appendMonthlyReceiptSection(content, expenseEntries, "No expenses recorded.", function (entry) {
+      return entry.note && entry.category ? entry.note + " (" + entry.category + ")" : entry.note || entry.category || "Expense";
+    });
+  } else {
+    if (lenderDayEntries.length) {
+      const summary = document.createElement("div");
+      summary.className = "chart-lender-summary";
+      const paidSummary = document.createElement("strong");
+      paidSummary.textContent = (point.day.loansFull + point.day.loansPartial) + " / " + lenderCount + " paid";
+      const breakdown = document.createElement("span");
+      breakdown.textContent = point.day.loansFull + " full · " + point.day.loansPartial + " partial";
+      summary.append(paidSummary, breakdown);
+      content.appendChild(summary);
+    }
+    appendMonthlyReceiptSection(content, lenderEntries, "No lender payments recorded.", function (entry) {
+      return entry.lenderName || "Lender";
+    });
+  }
+  detail.appendChild(content);
+}
+
+function renderMonthlyChart(days, monthEntries, lenderCount, lenderOrder) {
   const series = {
     income: { label: "Income", color: "#438655" },
     expenses: { label: "Expenses", color: "#dc9850" },
@@ -817,13 +884,13 @@ function renderMonthlyChart(days, lenderCount) {
   document.getElementById("monthly-chart-wrap").innerHTML = svg;
   const detail = document.getElementById("monthly-chart-detail");
   const selectedPoint = points.find(function (point) { return point.day.dayNumber === monthlyChartSelectedDay; });
-  if (selectedPoint) setMonthlyChartDetail(detail, selectedPoint, series, lenderCount);
-  else detail.textContent = "Tap a chart point to see that day's " + series.label.toLowerCase() + " amount.";
+  if (selectedPoint) setMonthlyChartDetail(detail, selectedPoint, series, monthEntries, lenderCount, lenderOrder);
+  else detail.textContent = "Tap a chart point to see its itemized daily receipt.";
   document.querySelectorAll(".chart-point-hit-area").forEach(function (pointButton) {
     function selectPoint() {
       monthlyChartSelectedDay = Number(pointButton.dataset.day);
       const point = points.find(function (item) { return item.day.dayNumber === monthlyChartSelectedDay; });
-      setMonthlyChartDetail(detail, point, series, lenderCount);
+      setMonthlyChartDetail(detail, point, series, monthEntries, lenderCount, lenderOrder);
       document.querySelectorAll(".chart-point-hit-area").forEach(function (otherPoint) {
         otherPoint.classList.toggle("selected", otherPoint === pointButton);
       });
@@ -849,7 +916,9 @@ async function renderMonthly() {
   const year = Number(monthKey.slice(0, 4));
   const month = Number(monthKey.slice(5, 7));
   const daysInMonth = new Date(year, month, 0).getDate();
-  const activeLenderIds = new Set((await getActiveLenders()).map(function (lender) { return lender.id; }));
+  const activeLenders = await getActiveLenders();
+  const activeLenderIds = new Set(activeLenders.map(function (lender) { return lender.id; }));
+  const lenderOrder = new Map(activeLenders.map(function (lender, index) { return [lender.id, index]; }));
   const allEntries = (await readAll("entries")).filter(function (entry) {
     return !entry.voided && entry.date.slice(0, 7) === monthKey &&
       (entry.type !== "lender_payment" || activeLenderIds.has(entry.lenderId));
@@ -860,7 +929,7 @@ async function renderMonthly() {
   const days = [];
   for (let dayNumber = 1; dayNumber <= daysInMonth; dayNumber += 1) {
     const label = new Date(year, month - 1, dayNumber).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-    days.push({ dayNumber: dayNumber, label: label, shortLabel: String(dayNumber), income: 0, expenses: 0, loans: 0, loansFull: 0, loansPartial: 0, advances: 0, netCash: 0 });
+    days.push({ dayNumber: dayNumber, dateKey: monthKey + "-" + String(dayNumber).padStart(2, "0"), label: label, shortLabel: String(dayNumber), income: 0, expenses: 0, loans: 0, loansFull: 0, loansPartial: 0, advances: 0, netCash: 0 });
   }
   const totals = { income: 0, expenses: 0, loans: 0, advances: 0, netCash: 0 };
   allEntries.forEach(function (entry) {
@@ -907,7 +976,7 @@ async function renderMonthly() {
   document.getElementById("month-loans").textContent = money(totals.loans);
   document.getElementById("month-advances").textContent = money(totals.advances);
   document.getElementById("month-net").textContent = money(totals.netCash);
-  renderMonthlyChart(days, activeLenderIds.size);
+  renderMonthlyChart(days, allEntries, activeLenders.length, lenderOrder);
   document.getElementById("monthly-empty").hidden = activities.length > 0;
   document.getElementById("monthly-table-wrap").innerHTML =
     '<table class="monthly-table"><thead><tr><th>Day</th><th>Income</th><th>Expenses</th><th>Lender payments</th><th>Staff advances</th><th>Net shop cash</th></tr></thead><tbody>' +
